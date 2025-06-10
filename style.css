@@ -1,0 +1,75 @@
+body {
+    font-family: sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #f0f0f0;
+    margin: 0;
+}
+
+.container {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+.image-container {
+    position: relative;
+    display: inline-block; /* Or block with margin: auto */
+    margin-top: 20px;
+    max-width: 100%; /* Prevent overflow */
+    max-height: calc(100vh - 200px); /* Limit height to fit screen */
+    overflow: hidden; /* Hide parts of image if container is smaller */
+}
+
+#imageCanvas {
+    display: block; /* Remove extra space below canvas */
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.crop-box {
+    position: absolute;
+    border: 2px dashed blue;
+    cursor: move; /* Default cursor for dragging */
+    box-sizing: border-box; /* Include border in width/height */
+    touch-action: none; /* Disable default touch actions */
+}
+
+/* Styles for resize handles */
+.resize-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: blue;
+    border: 1px solid white;
+    box-sizing: border-box;
+}
+
+/* Corner handles */
+.resize-handle.top-left { top: -5px; left: -5px; cursor: nwse-resize; }
+.resize-handle.top-right { top: -5px; right: -5px; cursor: nesw-resize; }
+.resize-handle.bottom-left { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.resize-handle.bottom-right { bottom: -5px; right: -5px; cursor: nwse-resize; }
+
+/* Edge handles */
+.resize-handle.top { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.resize-handle.bottom { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.resize-handle.left { left: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+.resize-handle.right { right: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+
+/* Hide crop box initially */
+.crop-box {
+    display: none;
+}
+
+#downloadButton {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 1em;
+    cursor: pointer;
+}
+

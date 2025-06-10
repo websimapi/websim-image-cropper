@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Cropper</title>
+    <link rel="stylesheet" href="style.css">
+    <script type="importmap">
+        {
+            "imports": {}
+        }
+    </script>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Simple Image Cropper</h1>
+        <input type="file" id="imageInput" accept="image/*">
+
+        <div class="image-container">
+            <canvas id="imageCanvas"></canvas>
+            <div id="cropBox" class="crop-box">
+                <!-- Resize handles could go here -->
+                <div class="resize-handle top-left"></div>
+                <div class="resize-handle top-right"></div>
+                <div class="resize-handle bottom-left"></div>
+                <div class="resize-handle bottom-right"></div>
+                <div class="resize-handle top"></div>
+                <div class="resize-handle bottom"></div>
+                <div class="resize-handle left"></div>
+                <div class="resize-handle right"></div>
+            </div>
+        </div>
+
+        <button id="downloadButton" style="display: none;">Download Cropped Image</button>
+    </div>
+
+    <script type="module" src="script.js"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
