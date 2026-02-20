@@ -2,41 +2,88 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Cropper</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Simple Cropper</title>
     <link rel="stylesheet" href="style.css">
-    <script type="importmap">
-        {
-            "imports": {}
-        }
-    </script>
 </head>
 <body>
+    <div class="app">
+        <header>
+            <button id="uploadTrigger" class="icon-btn" title="Open Image">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <span>Open</span>
+            </button>
+            <div class="spacer"></div>
+            <button id="downloadBtn" class="primary-btn" disabled>
+                <span>Save</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+            </button>
+        </header>
 
-    <div class="container">
-        <h1>Simple Image Cropper</h1>
-        <input type="file" id="imageInput" accept="image/*">
-
-        <div class="image-container">
-            <canvas id="imageCanvas"></canvas>
-            <div id="cropBox" class="crop-box">
-                <!-- Resize handles could go here -->
-                <div class="resize-handle top-left"></div>
-                <div class="resize-handle top-right"></div>
-                <div class="resize-handle bottom-left"></div>
-                <div class="resize-handle bottom-right"></div>
-                <div class="resize-handle top"></div>
-                <div class="resize-handle bottom"></div>
-                <div class="resize-handle left"></div>
-                <div class="resize-handle right"></div>
+        <main id="editorArea">
+            <div id="emptyState">
+                <p>Tap "Open" to choose an image</p>
             </div>
-        </div>
+            
+            <div class="canvas-wrapper">
+                <canvas id="editorCanvas"></canvas>
+                <div id="cropOverlay">
+                    <div id="cropBox">
+                        <div class="handle nw" data-dir="nw"></div>
+                        <div class="handle ne" data-dir="ne"></div>
+                        <div class="handle sw" data-dir="sw"></div>
+                        <div class="handle se" data-dir="se"></div>
+                        <!-- Edge handles -->
+                        <div class="handle n" data-dir="n"></div>
+                        <div class="handle e" data-dir="e"></div>
+                        <div class="handle s" data-dir="s"></div>
+                        <div class="handle w" data-dir="w"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
 
-        <button id="downloadButton" style="display: none;">Download Cropped Image</button>
+        <footer id="toolbar">
+            <div class="scroll-row">
+                <button class="tool-btn active" data-action="ratio" data-value="free">Free</button>
+                <button class="tool-btn" data-action="ratio" data-value="1">1:1</button>
+                <button class="tool-btn" data-action="ratio" data-value="1.33">4:3</button>
+                <button class="tool-btn" data-action="ratio" data-value="1.77">16:9</button>
+                <div class="sep"></div>
+                <button class="tool-btn" data-action="shape" id="shapeBtn">
+                    <span class="shape-icon rect"></span>
+                </button>
+                <button class="tool-btn" data-action="rotate" id="rotateBtn" title="Rotate">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6"></path>
+                        <path d="M20.49 15a9 9 0 1 1 2.12-9.36L23 10"></path>
+                    </svg>
+                </button>
+                <div class="sep"></div>
+                <button class="tool-btn" id="cutBtn" title="Freehand Cut">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="6" cy="6" r="3"></circle>
+                        <circle cx="6" cy="18" r="3"></circle>
+                        <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+                        <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+                        <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+                    </svg>
+                </button>
+            </div>
+        </footer>
     </div>
 
+    <input type="file" id="fileInput" accept="image/*" hidden>
+    
     <script type="module" src="script.js"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
-

@@ -1,75 +1,230 @@
+:root {
+    --bg-dark: #121212;
+    --bg-panel: #1e1e1e;
+    --primary: #3b82f6;
+    --text-main: #ffffff;
+    --text-muted: #a0a0a0;
+    --border: #333;
+}
+
+* {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
 body {
-    font-family: sans-serif;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    background-color: #f0f0f0;
     margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    height: 100vh;
+    overflow: hidden; /* No scrolling on main page */
 }
 
-.container {
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    text-align: center;
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
-.image-container {
+/* Header */
+header {
+    height: 60px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    background-color: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    justify-content: space-between;
+}
+
+.spacer { flex: 1; }
+
+button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.icon-btn {
+    padding: 8px;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 10px;
+}
+
+.primary-btn {
+    background-color: var(--primary);
+    color: white;
+    padding: 8px 16px;
+    font-weight: 600;
+    gap: 8px;
+}
+.primary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Editor Area */
+main {
+    flex: 1;
     position: relative;
-    display: inline-block; /* Or block with margin: auto */
-    margin-top: 20px;
-    max-width: 100%; /* Prevent overflow */
-    max-height: calc(100vh - 200px); /* Limit height to fit screen */
-    overflow: hidden; /* Hide parts of image if container is smaller */
+    overflow: hidden;
+    background-color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-#imageCanvas {
-    display: block; /* Remove extra space below canvas */
+#emptyState {
+    color: var(--text-muted);
+    font-size: 1.1em;
+}
+
+.canvas-wrapper {
+    position: relative;
+    display: none; /* Hidden until image loaded */
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+}
+
+#editorCanvas {
+    display: block;
     max-width: 100%;
     max-height: 100%;
 }
 
-.crop-box {
+/* Overlay & Crop Box */
+#cropOverlay {
     position: absolute;
-    border: 2px dashed blue;
-    cursor: move; /* Default cursor for dragging */
-    box-sizing: border-box; /* Include border in width/height */
-    touch-action: none; /* Disable default touch actions */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Let clicks pass through to container, but cropBox will catch them */
 }
 
-/* Styles for resize handles */
-.resize-handle {
+#cropBox {
     position: absolute;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7); /* The Dimmer */
+    pointer-events: auto;
+    touch-action: none;
+    cursor: move;
+}
+
+/* Handles */
+.handle {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    z-index: 10;
+}
+/* Visual dot inside handle */
+.handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     width: 10px;
     height: 10px;
-    background: blue;
-    border: 1px solid white;
-    box-sizing: border-box;
+    background-color: var(--primary);
+    border: 2px solid white;
+    border-radius: 50%;
 }
 
-/* Corner handles */
-.resize-handle.top-left { top: -5px; left: -5px; cursor: nwse-resize; }
-.resize-handle.top-right { top: -5px; right: -5px; cursor: nesw-resize; }
-.resize-handle.bottom-left { bottom: -5px; left: -5px; cursor: nesw-resize; }
-.resize-handle.bottom-right { bottom: -5px; right: -5px; cursor: nwse-resize; }
+/* Corner positioning */
+.handle.nw { top: -12px; left: -12px; cursor: nw-resize; }
+.handle.ne { top: -12px; right: -12px; cursor: ne-resize; }
+.handle.sw { bottom: -12px; left: -12px; cursor: sw-resize; }
+.handle.se { bottom: -12px; right: -12px; cursor: se-resize; }
 
-/* Edge handles */
-.resize-handle.top { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-.resize-handle.bottom { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-.resize-handle.left { left: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
-.resize-handle.right { right: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+/* Edge positioning - hide dots for edges to keep clean, or keep them? */
+.handle.n { top: -12px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
+.handle.s { bottom: -12px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
+.handle.w { left: -12px; top: 50%; transform: translateY(-50%); cursor: w-resize; }
+.handle.e { right: -12px; top: 50%; transform: translateY(-50%); cursor: e-resize; }
 
-/* Hide crop box initially */
-.crop-box {
-    display: none;
+/* Hide edge dots, keep hit area */
+.handle.n::after, .handle.s::after, .handle.w::after, .handle.e::after {
+    width: 20px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.5); border: none;
+}
+.handle.w::after, .handle.e::after {
+    width: 6px; height: 20px;
 }
 
-#downloadButton {
-    margin-top: 20px;
-    padding: 10px 20px;
-    font-size: 1em;
-    cursor: pointer;
+
+/* Circular Mode */
+#cropBox.circle {
+    border-radius: 50%;
+}
+#cropBox.circle::before {
+    /* To fix the box-shadow cutout for circle, we need a different approach or just accept square shadow on outside */
+    /* Box shadow on border-radius follows the curve, so it works! */
+    content: '';
+}
+/* Hide corner handles in circle mode if desired, but they are useful for resizing. 
+   Usually circle implies 1:1, but ellipses are possible. 
+   We will force 1:1 for circle mode in JS for simplicity. */
+
+/* Toolbar */
+footer {
+    height: 70px;
+    background-color: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
 }
 
+.scroll-row {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    width: 100%;
+    padding: 0 8px;
+    align-items: center;
+    /* Hide scrollbar */
+    scrollbar-width: none; 
+    -ms-overflow-style: none;
+}
+.scroll-row::-webkit-scrollbar { display: none; }
+
+.tool-btn {
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 20px;
+    background-color: rgba(255,255,255,0.05);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-weight: 500;
+}
+.tool-btn.active {
+    background-color: var(--primary);
+    color: white;
+}
+
+.sep {
+    width: 1px;
+    height: 24px;
+    background-color: var(--border);
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+
+.shape-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid currentColor;
+}
+.shape-icon.rect { border-radius: 2px; }
+.shape-icon.circle { border-radius: 50%; }

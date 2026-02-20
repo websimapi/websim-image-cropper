@@ -1,355 +1,528 @@
-const imageInput = document.getElementById('imageInput');
-const imageCanvas = document.getElementById('imageCanvas');
-const ctx = imageCanvas.getContext('2d');
-const imageContainer = document.querySelector('.image-container');
+// Audio Context for sound effects
+const clickSound = new Audio('click.mp3');
+const shutterSound = new Audio('shutter.mp3');
+
+function playClick() {
+    clickSound.currentTime = 0;
+    clickSound.play().catch(() => {}); // Ignore auto-play blocks
+}
+
+// Elements
+const fileInput = document.getElementById('fileInput');
+const uploadTrigger = document.getElementById('uploadTrigger');
+const downloadBtn = document.getElementById('downloadBtn');
+const canvas = document.getElementById('editorCanvas');
+const ctx = canvas.getContext('2d');
+const wrapper = document.querySelector('.canvas-wrapper');
 const cropBox = document.getElementById('cropBox');
-const downloadButton = document.getElementById('downloadButton');
+const editorArea = document.getElementById('editorArea');
+const emptyState = document.getElementById('emptyState');
+const shapeBtn = document.getElementById('shapeBtn');
+const cutBtn = document.getElementById('cutBtn');
 
-let img = new Image();
-let isDragging = false;
-let isResizing = false;
-let resizeHandle = null;
-let startX, startY; // Mouse position on mousedown
-let initialCropX, initialCropY, initialCropWidth, initialCropHeight; // Crop box state on mousedown
+// State
+let state = {
+    img: null,
+    rotation: 0, // 0, 90, 180, 270
+    aspectRatio: null, // null for free
+    isCircle: false,
+    crop: { x: 0, y: 0, w: 0, h: 0 }, // Relative to displayed canvas
+    imgName: 'image',
+    mode: 'crop', // 'crop' | 'cut'
+    cutPath: [], // Array of {x, y}
+    isCutClosed: false
+};
 
-const MIN_CROP_SIZE = 20; // Minimum width/height for crop box
+// UI Handlers
+uploadTrigger.addEventListener('click', () => {
+    playClick();
+    fileInput.click();
+});
 
-// Event listener for file input change
-imageInput.addEventListener('change', function(e) {
+fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
+        state.imgName = file.name.split('.')[0];
         const reader = new FileReader();
-        reader.onload = function(event) {
-            img.onload = function() {
-                // Clear previous drawings
-                ctx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
-
-                // Set canvas dimensions to image dimensions
-                imageCanvas.width = img.width;
-                imageCanvas.height = img.height;
-
-                // Draw the image onto the canvas
-                ctx.drawImage(img, 0, 0, img.width, img.height);
-
-                // Set container size based on image, but respect max-width/height
-                const containerRect = imageContainer.getBoundingClientRect();
-                 // We need to calculate scaled dimensions if the image is larger than container max size
-                const maxWidth = imageContainer.clientWidth; // Use clientWidth after CSS applied
-                const maxHeight = imageContainer.clientHeight; // Use clientHeight
-
-                let displayWidth = img.width;
-                let displayHeight = img.height;
-
-                // Scale image to fit within container while maintaining aspect ratio
-                if (displayWidth > maxWidth) {
-                    displayHeight *= maxWidth / displayWidth;
-                    displayWidth = maxWidth;
-                }
-                if (displayHeight > maxHeight) {
-                     displayWidth *= maxHeight / displayHeight;
-                     displayHeight = maxHeight;
-                }
-
-                imageCanvas.style.width = `${displayWidth}px`;
-                imageCanvas.style.height = `${displayHeight}px`;
-
-                 // Update container size to match the potentially scaled canvas size
-                imageContainer.style.width = `${displayWidth}px`;
-                imageContainer.style.height = `${displayHeight}px`;
-
-
-                // Initialize crop box in the center
-                const initialSize = Math.min(displayWidth, displayHeight) * 0.5;
-                const initialX = (displayWidth - initialSize) / 2;
-                const initialY = (displayHeight - initialSize) / 2;
-
-                setCropBoxPositionAndSize(initialX, initialY, initialSize, initialSize);
-
-                // Show the crop box and download button
-                cropBox.style.display = 'block';
-                downloadButton.style.display = 'block';
-
+        reader.onload = (evt) => {
+            const img = new Image();
+            img.onload = () => {
+                state.img = img;
+                state.rotation = 0;
+                resetEditor();
             };
-            img.src = event.target.result;
+            img.src = evt.target.result;
         };
         reader.readAsDataURL(file);
     }
 });
 
-// Helper to get mouse position relative to imageContainer
-function getMousePos(e) {
-    const rect = imageContainer.getBoundingClientRect();
-    let clientX, clientY;
+function resetEditor() {
+    emptyState.style.display = 'none';
+    wrapper.style.display = 'block';
+    downloadBtn.disabled = false;
+    
+    // Reset Cut State
+    state.mode = 'crop';
+    state.cutPath = [];
+    state.isCutClosed = false;
+    cutBtn.classList.remove('active');
+    cropBox.style.display = 'block';
 
-     // Handle touch events
-    if (e.touches) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-    } else { // Handle mouse events
-        clientX = e.clientX;
-        clientY = e.clientY;
+    renderCanvas();
+    
+    // Init crop box to 80% of canvas
+    const w = canvas.width * 0.8;
+    const h = canvas.height * 0.8;
+    const x = (canvas.width - w) / 2;
+    const y = (canvas.height - h) / 2;
+    
+    updateCropState(x, y, w, h);
+    if(state.isCircle) enforceCircle();
+}
+
+function renderCanvas() {
+    if (!state.img) return;
+
+    // Determine canvas size based on rotation
+    const isPortrait = state.rotation === 90 || state.rotation === 270;
+    const naturalWidth = state.img.width;
+    const naturalHeight = state.img.height;
+    
+    const targetW = isPortrait ? naturalHeight : naturalWidth;
+    const targetH = isPortrait ? naturalWidth : naturalHeight;
+
+    // Fit within the editor area max bounds
+    const containerW = editorArea.clientWidth - 32; // padding
+    const containerH = editorArea.clientHeight - 32;
+
+    const scale = Math.min(containerW / targetW, containerH / targetH);
+    
+    canvas.width = targetW * scale;
+    canvas.height = targetH * scale;
+
+    // Draw with rotation
+    ctx.save();
+    
+    // Clipping for Cut Mode (if closed)
+    if (state.mode === 'cut' && state.isCutClosed && state.cutPath.length > 2) {
+        ctx.beginPath();
+        ctx.moveTo(state.cutPath[0].x, state.cutPath[0].y);
+        for (let i = 1; i < state.cutPath.length; i++) {
+            ctx.lineTo(state.cutPath[i].x, state.cutPath[i].y);
+        }
+        ctx.closePath();
+        ctx.clip();
     }
 
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(state.rotation * Math.PI / 180);
+    ctx.scale(scale, scale);
+    ctx.drawImage(state.img, -naturalWidth / 2, -naturalHeight / 2);
+    ctx.restore();
 
-    // Scale mouse position based on displayed image size vs original image size
-    const scaleX = img.width / imageCanvas.clientWidth;
-    const scaleY = img.height / imageCanvas.clientHeight;
-
-
-    const x = (clientX - rect.left);
-    const y = (clientY - rect.top);
-
-    // Return position relative to the *displayed* image container
-    return { x: x, y: y };
+    // Draw Cut Path UI (if in cut mode)
+    if (state.mode === 'cut' && state.cutPath.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 2;
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
+        
+        ctx.beginPath();
+        ctx.moveTo(state.cutPath[0].x, state.cutPath[0].y);
+        for (let i = 1; i < state.cutPath.length; i++) {
+            ctx.lineTo(state.cutPath[i].x, state.cutPath[i].y);
+        }
+        if (state.isCutClosed) {
+            ctx.closePath();
+            // Don't fill, we just want to see the boundary, 
+            // the clipping above handles the visual "cut"
+            ctx.stroke();
+        } else {
+            ctx.stroke();
+            // Draw dots at vertices
+            state.cutPath.forEach((p, i) => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, i === 0 ? 5 : 3, 0, Math.PI * 2);
+                ctx.fillStyle = i === 0 ? '#fff' : '#3b82f6';
+                ctx.fill();
+                if (i===0) ctx.stroke(); // border for start point
+            });
+            
+            // Draw line to cursor? No, we don't track cursor here easily without more listeners
+        }
+        ctx.restore();
+    }
 }
 
-// Helper to set crop box position and size (uses values relative to displayed image)
-function setCropBoxPositionAndSize(x, y, w, h) {
-    // Clamp values to within image bounds
-    const containerWidth = imageContainer.clientWidth;
-    const containerHeight = imageContainer.clientHeight;
+// Crop Logic
+function updateCropState(x, y, w, h) {
+    // Clamp
+    const min = 40;
+    const maxW = canvas.width;
+    const maxH = canvas.height;
 
-    x = Math.max(0, Math.min(x, containerWidth - MIN_CROP_SIZE));
-    y = Math.max(0, Math.min(y, containerHeight - MIN_CROP_SIZE));
-    w = Math.max(MIN_CROP_SIZE, Math.min(w, containerWidth - x));
-    h = Math.max(MIN_CROP_SIZE, Math.min(h, containerHeight - y));
+    // Ensure within bounds
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x + w > maxW) {
+        if (w > maxW) w = maxW;
+        x = maxW - w;
+    }
+    if (y + h > maxH) {
+        if (h > maxH) h = maxH;
+        y = maxH - h;
+    }
 
-
-    cropBox.style.left = `${x}px`;
-    cropBox.style.top = `${y}px`;
-    cropBox.style.width = `${w}px`;
-    cropBox.style.height = `${h}px`;
-
-     // Update initial values for drag/resize operations to use *pixel* values
-    initialCropX = x;
-    initialCropY = y;
-    initialCropWidth = w;
-    initialCropHeight = h;
+    state.crop = { x, y, w, h };
+    renderCropBox();
 }
 
+function renderCropBox() {
+    cropBox.style.left = `${state.crop.x}px`;
+    cropBox.style.top = `${state.crop.y}px`;
+    cropBox.style.width = `${state.crop.w}px`;
+    cropBox.style.height = `${state.crop.h}px`;
+}
 
-// Mousedown handler on the image container
-imageContainer.addEventListener('mousedown', handleStart);
-imageContainer.addEventListener('touchstart', handleStart, { passive: false }); // Add touch support
+// Drag & Resize
+let isDragging = false;
+let resizeDir = null; // nw, ne, sw, se, n, s, e, w
+let startPos = { x: 0, y: 0 };
+let startCrop = { x: 0, y: 0, w: 0, h: 0 };
+
+cropBox.addEventListener('pointerdown', handleStart);
 
 function handleStart(e) {
-    // Prevent default touch behavior like scrolling
-    if (e.cancelable) {
-         e.preventDefault();
+    e.preventDefault();
+    if (!state.img) return;
+
+    const target = e.target;
+    if (target.classList.contains('handle')) {
+        resizeDir = target.dataset.dir;
+    } else {
+        isDragging = true;
     }
 
+    startPos = { x: e.clientX, y: e.clientY };
+    startCrop = { ...state.crop };
 
-    const mousePos = getMousePos(e);
-    startX = mousePos.x;
-    startY = mousePos.y;
-
-    const cropRect = cropBox.getBoundingClientRect();
-    const containerRect = imageContainer.getBoundingClientRect();
-
-    // Calculate position relative to the image container top-left
-    const cropX = cropRect.left - containerRect.left;
-    const cropY = cropRect.top - containerRect.top;
-    const cropWidth = cropRect.width;
-    const cropHeight = cropRect.height;
-
-
-    // Check if click is inside the crop box
-    if (startX >= cropX && startX <= cropX + cropWidth &&
-        startY >= cropY && startY <= cropY + cropHeight) {
-
-        initialCropX = cropX;
-        initialCropY = cropY;
-        initialCropWidth = cropWidth;
-        initialCropHeight = cropHeight;
-
-        // Check if click is on a resize handle
-        const handles = cropBox.querySelectorAll('.resize-handle');
-        let onHandle = false;
-        handles.forEach(handle => {
-            const handleRect = handle.getBoundingClientRect();
-             // Check if mouse is within handle bounds (relative to viewport)
-            if (mousePos.x >= (handleRect.left - containerRect.left) && mousePos.x <= (handleRect.right - containerRect.left) &&
-                mousePos.y >= (handleRect.top - containerRect.top) && mousePos.y <= (handleRect.bottom - containerRect.top)) {
-                isResizing = true;
-                resizeHandle = handle.classList[1]; // Get handle class name (e.g., 'top-left')
-                onHandle = true;
-            }
-        });
-
-        if (!onHandle) {
-             // If not on a handle, assume dragging the box
-            isDragging = true;
-            cropBox.style.cursor = 'grabbing';
-        }
-
-
-    }
+    document.addEventListener('pointermove', handleMove);
+    document.addEventListener('pointerup', handleEnd);
+    document.addEventListener('pointercancel', handleEnd);
 }
-
-// Mousemove handler on the document
-document.addEventListener('mousemove', handleMove);
-document.addEventListener('touchmove', handleMove, { passive: false }); // Add touch support
 
 function handleMove(e) {
-     if (e.cancelable) {
-         e.preventDefault();
-    }
+    if (!isDragging && !resizeDir) return;
+    e.preventDefault();
 
-    if (!isDragging && !isResizing) return;
-
-    const mousePos = getMousePos(e);
-    const deltaX = mousePos.x - startX;
-    const deltaY = mousePos.y - startY;
-
-    const containerWidth = imageContainer.clientWidth;
-    const containerHeight = imageContainer.clientHeight;
-
+    const dx = e.clientX - startPos.x;
+    const dy = e.clientY - startPos.y;
 
     if (isDragging) {
-        let newX = initialCropX + deltaX;
-        let newY = initialCropY + deltaY;
+        updateCropState(startCrop.x + dx, startCrop.y + dy, startCrop.w, startCrop.h);
+    } else if (resizeDir) {
+        let { x, y, w, h } = startCrop;
+        const min = 40;
 
-        // Clamp dragging within bounds
-        newX = Math.max(0, Math.min(newX, containerWidth - initialCropWidth));
-        newY = Math.max(0, Math.min(newY, containerHeight - initialCropHeight));
+        // Apply Delta based on handle
+        if (resizeDir.includes('e')) w += dx;
+        if (resizeDir.includes('w')) { x += dx; w -= dx; }
+        if (resizeDir.includes('s')) h += dy;
+        if (resizeDir.includes('n')) { y += dy; h -= dy; }
 
-        cropBox.style.left = `${newX}px`;
-        cropBox.style.top = `${newY}px`;
-
-    } else if (isResizing) {
-        let newX = initialCropX;
-        let newY = initialCropY;
-        let newWidth = initialCropWidth;
-        let newHeight = initialCropHeight;
-
-        switch (resizeHandle) {
-            case 'top-left':
-                newX = Math.min(initialCropX + deltaX, initialCropX + initialCropWidth - MIN_CROP_SIZE);
-                newY = Math.min(initialCropY + deltaY, initialCropY + initialCropHeight - MIN_CROP_SIZE);
-                newWidth = initialCropWidth - (newX - initialCropX);
-                newHeight = initialCropHeight - (newY - initialCropY);
-                break;
-            case 'top-right':
-                 newY = Math.min(initialCropY + deltaY, initialCropY + initialCropHeight - MIN_CROP_SIZE);
-                 newWidth = Math.max(MIN_CROP_SIZE, initialCropWidth + deltaX);
-                 newHeight = initialCropHeight - (newY - initialCropY);
-                 break;
-            case 'bottom-left':
-                 newX = Math.min(initialCropX + deltaX, initialCropX + initialCropWidth - MIN_CROP_SIZE);
-                 newWidth = initialCropWidth - (newX - initialCropX);
-                 newHeight = Math.max(MIN_CROP_SIZE, initialCropHeight + deltaY);
-                 break;
-            case 'bottom-right':
-                 newWidth = Math.max(MIN_CROP_SIZE, initialCropWidth + deltaX);
-                 newHeight = Math.max(MIN_CROP_SIZE, initialCropHeight + deltaY);
-                 break;
-            case 'top':
-                 newY = Math.min(initialCropY + deltaY, initialCropY + initialCropHeight - MIN_CROP_SIZE);
-                 newHeight = initialCropHeight - (newY - initialCropY);
-                 break;
-            case 'bottom':
-                 newHeight = Math.max(MIN_CROP_SIZE, initialCropHeight + deltaY);
-                 break;
-            case 'left':
-                 newX = Math.min(initialCropX + deltaX, initialCropX + initialCropWidth - MIN_CROP_SIZE);
-                 newWidth = initialCropWidth - (newX - initialCropX);
-                 break;
-            case 'right':
-                 newWidth = Math.max(MIN_CROP_SIZE, initialCropWidth + deltaX);
-                 break;
+        // Fix negative dimensions (flipping)
+        if (w < min) {
+             if (resizeDir.includes('w')) x = startCrop.x + startCrop.w - min;
+             w = min;
+        }
+        if (h < min) {
+             if (resizeDir.includes('n')) y = startCrop.y + startCrop.h - min;
+             h = min;
         }
 
-        // Clamp overall box position and size
-        newX = Math.max(0, newX);
-        newY = Math.max(0, newY);
-        newWidth = Math.min(newWidth, containerWidth - newX);
-        newHeight = Math.min(newHeight, containerHeight - newY);
-
-        // Ensure minimum size
-        if (newWidth < MIN_CROP_SIZE) {
-             if (resizeHandle.includes('left')) newX = newX + newWidth - MIN_CROP_SIZE;
-             newWidth = MIN_CROP_SIZE;
+        // Apply Aspect Ratio if set
+        if (state.aspectRatio || state.isCircle) {
+            const ratio = state.isCircle ? 1 : state.aspectRatio;
+            
+            // If dragging corner, preserve ratio based on width or height dominance?
+            // Simple approach: width drives height for E/W, height drives width for N/S
+            // For corners, let's prioritize width change
+            
+            if (resizeDir.length === 2) { // Corner
+                // If moving diagonally, take the max displacement to feel natural
+                if (Math.abs(dx) > Math.abs(dy)) {
+                     h = w / ratio;
+                     if (resizeDir.includes('n')) y = startCrop.y + startCrop.h - h;
+                } else {
+                     w = h * ratio;
+                     if (resizeDir.includes('w')) x = startCrop.x + startCrop.w - w;
+                }
+            } else { // Edge
+                if (resizeDir === 'e' || resizeDir === 'w') {
+                    h = w / ratio;
+                    y = startCrop.y + (startCrop.h - h)/2; // Center vertically
+                } else {
+                    w = h * ratio;
+                    x = startCrop.x + (startCrop.w - w)/2; // Center horizontally
+                }
+            }
         }
-         if (newHeight < MIN_CROP_SIZE) {
-             if (resizeHandle.includes('top')) newY = newY + newHeight - MIN_CROP_SIZE;
-             newHeight = MIN_CROP_SIZE;
-        }
 
-
-        cropBox.style.left = `${newX}px`;
-        cropBox.style.top = `${newY}px`;
-        cropBox.style.width = `${newWidth}px`;
-        cropBox.style.height = `${newHeight}px`;
+        updateCropState(x, y, w, h);
     }
 }
-
-// Mouseup handler on the document
-document.addEventListener('mouseup', handleEnd);
-document.addEventListener('touchend', handleEnd); // Add touch support
-document.addEventListener('touchcancel', handleEnd); // Add touch support
 
 function handleEnd() {
     isDragging = false;
-    isResizing = false;
-    resizeHandle = null;
-    cropBox.style.cursor = 'move'; // Reset cursor
+    resizeDir = null;
+    document.removeEventListener('pointermove', handleMove);
+    document.removeEventListener('pointerup', handleEnd);
+    document.removeEventListener('pointercancel', handleEnd);
 }
 
-// Download button listener
-downloadButton.addEventListener('click', function() {
-    if (!img.src) {
-        alert("Please upload an image first.");
-        return;
+// Toolbar actions
+document.querySelectorAll('[data-action="ratio"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        playClick();
+        document.querySelectorAll('[data-action="ratio"]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const val = btn.dataset.value;
+        state.aspectRatio = val === 'free' ? null : parseFloat(val);
+        
+        // If switching to ratio, enforce it immediately on current crop
+        if (state.aspectRatio) {
+            let { x, y, w, h } = state.crop;
+            // Adjust height to match width
+            h = w / state.aspectRatio;
+            // If that overflows, adjust width to match height
+            if (y + h > canvas.height) {
+                h = canvas.height - y;
+                w = h * state.aspectRatio;
+            }
+             // Center correction if needed? Nah, just fit.
+            updateCropState(x, y, w, h);
+        }
+    });
+});
+
+document.getElementById('rotateBtn').addEventListener('click', () => {
+    playClick();
+    if (!state.img) return;
+    state.rotation = (state.rotation + 90) % 360;
+    
+    // Reset Cut Path on rotation as coordinates shift
+    state.cutPath = [];
+    state.isCutClosed = false;
+    
+    renderCanvas();
+    // Reset crop to center after rotation because dimensions changed
+    const w = canvas.width * 0.8;
+    const h = canvas.height * 0.8;
+    updateCropState((canvas.width - w)/2, (canvas.height - h)/2, w, h);
+});
+
+// Cut Tool
+cutBtn.addEventListener('click', () => {
+    playClick();
+    if (!state.img) return;
+    
+    if (state.mode === 'cut') {
+        // Toggle Off
+        state.mode = 'crop';
+        cutBtn.classList.remove('active');
+        cropBox.style.display = 'block';
+        state.cutPath = []; // Clear path when exiting? Maybe safer to clear to avoid confusion
+        state.isCutClosed = false;
+    } else {
+        // Toggle On
+        state.mode = 'cut';
+        cutBtn.classList.add('active');
+        cropBox.style.display = 'none';
+        state.cutPath = [];
+        state.isCutClosed = false;
+        
+        // Disable other tools visually
+        document.querySelectorAll('[data-action="ratio"]').forEach(b => b.classList.remove('active'));
     }
+    renderCanvas();
+});
 
-    const cropRect = cropBox.getBoundingClientRect();
-    const containerRect = imageContainer.getBoundingClientRect();
+// Canvas Interaction for Cut
+wrapper.addEventListener('click', (e) => {
+    if (state.mode !== 'cut' || state.isCutClosed || !state.img) return;
+    
+    // Get coordinates relative to canvas
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Check if bounds valid
+    if (x < 0 || y < 0 || x > canvas.width || y > canvas.height) return;
 
-    // Calculate crop position and size relative to the *displayed* image
-    const cropX_display = cropRect.left - containerRect.left;
-    const cropY_display = cropRect.top - containerRect.top;
-    const cropWidth_display = cropRect.width;
-    const cropHeight_display = cropRect.height;
+    // Check distance to start point to close loop
+    if (state.cutPath.length > 2) {
+        const start = state.cutPath[0];
+        const dist = Math.hypot(x - start.x, y - start.y);
+        if (dist < 20) {
+            // Close loop
+            state.isCutClosed = true;
+            playClick(); // Feedback
+            renderCanvas();
+            return;
+        }
+    }
+    
+    state.cutPath.push({x, y});
+    renderCanvas();
+});
 
-    // Calculate scaling factors between original image and displayed image
-    const scaleX = img.width / imageCanvas.clientWidth;
-    const scaleY = img.height / imageCanvas.clientHeight;
+shapeBtn.addEventListener('click', () => {
+    playClick();
+    state.isCircle = !state.isCircle;
+    const icon = shapeBtn.querySelector('.shape-icon');
+    
+    if (state.isCircle) {
+        cropBox.classList.add('circle');
+        icon.classList.remove('rect');
+        icon.classList.add('circle');
+        enforceCircle();
+    } else {
+        cropBox.classList.remove('circle');
+        icon.classList.remove('circle');
+        icon.classList.add('rect');
+    }
+});
 
-    // Calculate crop position and size relative to the *original* image
-    const cropX_original = cropX_display * scaleX;
-    const cropY_original = cropY_display * scaleY;
-    const cropWidth_original = cropWidth_display * scaleX;
-    const cropHeight_original = cropHeight_display * scaleY;
+function enforceCircle() {
+    // Circle requires 1:1
+    state.aspectRatio = 1; 
+    // Find active ratio button if exists, or just deselect all to indicate custom mode? 
+    // Actually circle forces 1:1, so highlight 1:1
+    document.querySelectorAll('[data-action="ratio"]').forEach(b => {
+        b.classList.remove('active');
+        if(b.dataset.value === "1") b.classList.add('active');
+    });
 
-    // Create a temporary canvas for cropping
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = cropWidth_original;
-    tempCanvas.height = cropHeight_original;
-    const tempCtx = tempCanvas.getContext('2d');
+    let { x, y, w, h } = state.crop;
+    const size = Math.min(w, h);
+    updateCropState(x, y, size, size);
+}
 
-    // Draw the cropped region from the original image onto the temporary canvas
-    tempCtx.drawImage(
-        img,
-        cropX_original, // Source x
-        cropY_original, // Source y
-        cropWidth_original, // Source width
-        cropHeight_original, // Source height
-        0, // Destination x
-        0, // Destination y
-        cropWidth_original, // Destination width
-        cropHeight_original // Destination height
-    );
+// Download
+downloadBtn.addEventListener('click', () => {
+    if (!state.img) return;
+    shutterSound.play().catch(()=>{});
 
-    // Get the image data as a Blob
-    tempCanvas.toBlob(function(blob) {
+    const isPortrait = state.rotation === 90 || state.rotation === 270;
+    const fullW = isPortrait ? state.img.height : state.img.width;
+    const fullH = isPortrait ? state.img.width : state.img.height;
+    
+    // Calculate Scale Factor between Visible Canvas and Full Res Canvas
+    // canvas.width is the display width of the image area
+    const scaleFactor = fullW / canvas.width;
+
+    if (state.mode === 'cut' && state.isCutClosed) {
+        // POLYGON CUT DOWNLOAD
+        
+        // 1. Calculate bounding box of the cut path in Full Res coordinates
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        
+        const fullPath = state.cutPath.map(p => {
+            const fx = p.x * scaleFactor;
+            const fy = p.y * scaleFactor;
+            if (fx < minX) minX = fx;
+            if (fy < minY) minY = fy;
+            if (fx > maxX) maxX = fx;
+            if (fy > maxY) maxY = fy;
+            return { x: fx, y: fy };
+        });
+
+        const w = maxX - minX;
+        const h = maxY - minY;
+        
+        // 2. Setup Final Canvas
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = w;
+        finalCanvas.height = h;
+        const ctx = finalCanvas.getContext('2d');
+        
+        // 3. Create Path on Final Canvas (translated by minX, minY)
+        ctx.beginPath();
+        ctx.moveTo(fullPath[0].x - minX, fullPath[0].y - minY);
+        for (let i = 1; i < fullPath.length; i++) {
+            ctx.lineTo(fullPath[i].x - minX, fullPath[i].y - minY);
+        }
+        ctx.closePath();
+        ctx.clip();
+
+        // 4. Draw Image into clipped area
+        // We need to draw the source image relative to this new crop
+        // The source image (rotated) has top-left at (0,0) in fullW/fullH space.
+        // We are viewing a window at (minX, minY)
+        
+        ctx.save();
+        // Translate so that the (minX, minY) point of the source aligns with (0,0) of destination
+        ctx.translate(-minX, -minY);
+        
+        // Now do standard rotation/drawing of source
+        ctx.translate(fullW/2, fullH/2);
+        ctx.rotate(state.rotation * Math.PI / 180);
+        ctx.drawImage(state.img, -state.img.width/2, -state.img.height/2);
+        
+        ctx.restore();
+
+        triggerDownload(finalCanvas);
+
+    } else {
+        // STANDARD CROP DOWNLOAD
+        
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = fullW;
+        offCanvas.height = fullH;
+        const offCtx = offCanvas.getContext('2d');
+        
+        // Draw rotated full image
+        offCtx.save();
+        offCtx.translate(fullW/2, fullH/2);
+        offCtx.rotate(state.rotation * Math.PI / 180);
+        offCtx.drawImage(state.img, -state.img.width/2, -state.img.height/2);
+        offCtx.restore();
+        
+        const cropX = state.crop.x * scaleFactor;
+        const cropY = state.crop.y * scaleFactor;
+        const cropW = state.crop.w * scaleFactor;
+        const cropH = state.crop.h * scaleFactor;
+        
+        // Create final canvas
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = cropW;
+        finalCanvas.height = cropH;
+        const finalCtx = finalCanvas.getContext('2d');
+        
+        if (state.isCircle) {
+            finalCtx.beginPath();
+            finalCtx.arc(cropW/2, cropH/2, cropW/2, 0, Math.PI * 2);
+            finalCtx.clip();
+        }
+        
+        finalCtx.drawImage(offCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+        triggerDownload(finalCanvas);
+    }
+});
+
+function triggerDownload(canvas) {
+    canvas.toBlob(blob => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'cropped-image.png'; // Suggest a filename
+        a.download = `${state.imgName}_cut.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url); // Clean up the URL object
-    }, 'image/png'); // Specify the output format
-});
+        URL.revokeObjectURL(url);
+    }, 'image/png');
+}
 
+// Initialize icons
+shapeBtn.querySelector('.shape-icon').classList.add('rect');
